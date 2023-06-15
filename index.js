@@ -3,6 +3,7 @@ const debug = require('debug')('jambonz:sbc-registrar');
 const bent = require('bent');
 const qs = require('qs');
 const crypto = require('crypto');
+const { decrypt } = require('./utils');
 const toBase64 = (str) => Buffer.from(str || '', 'utf8').toString('base64');
 
 function basicAuth(username, password) {
@@ -171,6 +172,7 @@ async function clientAuthentication(logger, data, req) {
   if (clients.length) {
     // Only take the first result.
     const client = clients[0];
+    client.password = decrypt(client.password);
     if (client.is_active && calculateResponse(data, client.password) === response) {
       return {
         status: 'ok',
