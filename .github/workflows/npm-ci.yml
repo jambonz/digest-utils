@@ -12,7 +12,8 @@ jobs:
           node-version: 16.x
       - run: npm ci
       - run: npm run jslint
-      - run: npm publish
+      - name: Publish package
+        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
  
