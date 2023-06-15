@@ -222,9 +222,9 @@ const digestChallenge = async(req, res, next) => {
 
     const startAt = process.hrtime();
     // Authenticate via HTTP server
-    let autheResult;
+    let authResult;
     if (registration_hook_url) {
-      autheResult = await httpAuthenticate(
+      authResult = await httpAuthenticate(
         logger,
         data,
         registration_hook_url,
@@ -236,18 +236,18 @@ const digestChallenge = async(req, res, next) => {
       );
     } else {
       // Check if client is available in DB.
-      autheResult = await clientAuthentication(logger, data, req);
+      authResult = await clientAuthentication(logger, data, req);
     }
     const diff = process.hrtime(startAt);
     const rtt = diff[0] * 1e3 + diff[1] * 1e-6;
 
-    if (autheResult.statusCode !== 200) {
+    if (authResult.statusCode !== 200) {
       // Error happens
-      return res.send(autheResult.statusCode);
-    } else if (autheResult.status.toLowerCase() !== 'ok') {
+      return res.send(authResult.statusCode);
+    } else if (authResult.status.toLowerCase() !== 'ok') {
       // Authentication failed
       res.send(403, {headers: {
-        'X-Reason': autheResult.blacklist === true ?
+        'X-Reason': authResult.blacklist === true ?
           `detected potential spammer from ${req.source_address}:${req.source_port}` :
           'Invalid credentials'
       }});
@@ -257,7 +257,7 @@ const digestChallenge = async(req, res, next) => {
       // Authentication success
       req.authorization = {
         challengeResponse: pieces,
-        grant: autheResult
+        grant: authResult
       };
       stats.histogram('app.hook.response_time', rtt.toFixed(0), ['hook_type:auth', `status:${200}`]);
     }
