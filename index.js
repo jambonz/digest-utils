@@ -174,9 +174,12 @@ async function clientAuthentication(logger, data, req) {
     const client = clients[0];
     client.password = decrypt(client.password);
     if (client.is_active && calculateResponse(data, client.password) === response) {
+      // eslint-disable-next-line no-unused-vars
+      const {client_sid, account_sid, is_active, username, password, ...settings} = client;
       return {
         status: 'ok',
-        statusCode: 200
+        statusCode: 200,
+        ...settings
       };
     }
   }
