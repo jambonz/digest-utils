@@ -96,7 +96,8 @@ async function httpAuthenticate(logger, data, url, hook_method, secret, username
       ...(username &&
         password &&
         basicAuth(username, password)),
-      ...(secret && generateSigHeader(body || 'null', secret))
+      ...(secret && generateSigHeader(body || 'null', secret)),
+      ...(process.env.JAMBONES_HTTP_USER_AGENT_HEADER && {'user-agent' : process.env.JAMBONES_HTTP_USER_AGENT_HEADER}),
     };
     const request = bent(
       'json',
