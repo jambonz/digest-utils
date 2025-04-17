@@ -21,7 +21,6 @@
   "license": "MIT",
   "dependencies": {
     "nonce": "^1.0.4",
-    "bent": "^7.3.12",
     "qs": "^6.9.4",
     "debug": "^4.3.4"
   },

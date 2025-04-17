@@ -1,6 +1,5 @@
 const nonce = require('nonce')();
 const debug = require('debug')('jambonz:sbc-registrar');
-const bent = require('bent');
 const qs = require('qs');
 const crypto = require('crypto');
 const { decrypt } = require('./utils');
@@ -93,34 +92,45 @@ async function httpAuthenticate(logger, data, url, hook_method, secret, username
       body = data;
     }
     const headers = {
+      'Content-Type': 'application/json',
       ...(username &&
         password &&
         basicAuth(username, password)),
       ...(secret && generateSigHeader(body || 'null', secret)),
       ...(process.env.JAMBONES_HTTP_USER_AGENT_HEADER && {'user-agent' : process.env.JAMBONES_HTTP_USER_AGENT_HEADER}),
     };
-    const request = bent(
-      'json',
-      200,
+    const response = await fetch(uri, {
       method,
-      headers
-    );
-    const json = await request(uri, body, headers);
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (response.status !== 200) {
+      const err = new Error(`Error from auth callback: ${response.statusText}`);
+      err.statusCode = response.status;
+      err.hook = uri;
+      err.code = 'StatusError';
+      throw err;
+    }
+    const json = await response.json();
     return {
       ...json,
       statusCode: 200
     };
   } catch (err) {
-    logger.info(`Error from calling auth callback: ${err}`);
+    logger.info(JSON.stringify(err), `Error from calling auth callback: ${err}`);
     let opts = { account_sid };
-    if (err.code === 'ECONNREFUSED') {
-      opts = { ...opts, alert_type: AlertType.WEBHOOK_CONNECTION_FAILURE, url: err.hook };
+    if (err.code === 'StatusError' || (err.cause && err.cause.name === 'StatusError')) {
+      opts = { ...opts, alert_type: AlertType.WEBHOOK_STATUS_FAILURE, url: err.hook || url, status: err.statusCode };
     }
-    else if (err.code === 'ENOTFOUND') {
-      opts = { ...opts, alert_type: AlertType.WEBHOOK_CONNECTION_FAILURE, url: err.hook };
+    else if (err.cause && err.cause.code === 'ECONNREFUSED') {
+      opts = { ...opts, alert_type: AlertType.WEBHOOK_CONNECTION_FAILURE, url: err.hook || url };
     }
-    else if (err.name === 'StatusError') {
-      opts = { ...opts, alert_type: AlertType.WEBHOOK_STATUS_FAILURE, url: err.hook, status: err.statusCode };
+    else if (err.cause && err.cause.code === 'ENOTFOUND') {
+      opts = { ...opts, alert_type: AlertType.WEBHOOK_CONNECTION_FAILURE, url: err.hook || url };
+    }
+    else if (err instanceof TypeError) {
+      opts = { ...opts, alert_type: AlertType.WEBHOOK_CONNECTION_FAILURE, url: url };
     }
     if (opts.alert_type) {
       try {
@@ -255,7 +265,8 @@ const digestChallenge = async(req, res, next) => {
       res.send(403, {headers: {
         'X-Reason': authResult.blacklist === true ?
           `detected potential spammer from ${req.source_address}:${req.source_port}` :
-          'Invalid credentials'
+          'Invalid credentials',
+        ...(authResult.headers || {})
       }});
       stats.histogram('app.hook.response_time', rtt.toFixed(0), ['hook_type:auth', `status:${403}`]);
       return;
