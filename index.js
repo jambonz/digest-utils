@@ -200,6 +200,22 @@ async function clientAuthentication(logger, data, req) {
   };
 }
 
+async function trunkAuthentication(data, auth_trunk) {
+  const {username, response} = data;
+  const {inbound_auth_username, inbound_auth_password} = auth_trunk;
+  if (inbound_auth_username === username && calculateResponse(data, inbound_auth_password) === response) {
+    return {
+      status: 'ok',
+      statusCode: 200,
+      auth_trunk
+    };
+  }
+  return {
+    status: 'failed',
+    statusCode: 200
+  };
+}
+
 const digestChallenge = async(req, res, next) => {
   const {logger} = req.locals;
   const {stats} = req.srf.locals;
@@ -209,7 +225,8 @@ const digestChallenge = async(req, res, next) => {
     registration_hook_method,
     registration_hook_username,
     registration_hook_password,
-    webhook_secret
+    webhook_secret,
+    auth_trunks
   } = req.locals;
   // Cannot detect account, reject register request
   try {
@@ -237,23 +254,36 @@ const digestChallenge = async(req, res, next) => {
     logger.debug(data, 'Authorization data');
 
     const startAt = process.hrtime();
-    // Authenticate via HTTP server
+
     let authResult;
-    if (registration_hook_url) {
-      authResult = await httpAuthenticate(
-        logger,
-        data,
-        registration_hook_url,
-        registration_hook_method,
-        webhook_secret,
-        registration_hook_username,
-        registration_hook_password,
-        req
-      );
-    } else {
-      // Check if client is available in DB.
-      authResult = await clientAuthentication(logger, data, req);
+    // If auth_trunks is present, try to authenticate against each trunk
+    if (auth_trunks && Array.isArray(auth_trunks)) {
+      for (const t of auth_trunks) {
+        authResult = await trunkAuthentication(data, t);
+        // found good trunk, no need to continue
+        if (authResult.status === 'ok') break;
+      }
     }
+
+    if (!authResult || authResult.status !== 'ok') {
+      if (registration_hook_url) {
+        // Authenticate via HTTP server
+        authResult = await httpAuthenticate(
+          logger,
+          data,
+          registration_hook_url,
+          registration_hook_method,
+          webhook_secret,
+          registration_hook_username,
+          registration_hook_password,
+          req
+        );
+      } else {
+        // Check if client is available in DB.
+        authResult = await clientAuthentication(logger, data, req);
+      }
+    }
+
     const diff = process.hrtime(startAt);
     const rtt = diff[0] * 1e3 + diff[1] * 1e-6;
 
