@@ -183,8 +183,11 @@ async function clientAuthentication(logger, data, req) {
   if (clients.length) {
     // Only take the first result.
     const client = clients[0];
-    client.password = decrypt(client.password);
-    if (client.is_active && calculateResponse(data, client.password) === response) {
+
+    // should not reassign decrypted password to client.password
+    // it may cause issue that while decrypting an already decrypted password
+    const decryptedPassword = decrypt(client.password);
+    if (client.is_active && calculateResponse(data, decryptedPassword) === response) {
       // eslint-disable-next-line no-unused-vars
       const {client_sid, account_sid, is_active, username, password, ...settings} = client;
       return {
