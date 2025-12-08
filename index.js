@@ -51,6 +51,11 @@ function parseAuthHeader(hdrValue) {
     }
   }
 
+   // check if response
+  if (!pieces['response']) {
+    return false;
+  } 
+
   // check mandatory fields
   ['username', 'realm', 'nonce', 'uri', 'response'].forEach((tok) => {
     if (!pieces[tok]) throw new Error(`missing authorization component: ${tok}`);
@@ -245,6 +250,9 @@ const digestChallenge = async(req, res, next) => {
     if (!req.has('Authorization')) return respondChallenge(req, res);
 
     const pieces = parseAuthHeader(req.get('Authorization'));
+    // Auth header without a response (eg first request)
+    if (!pieces) return respondChallenge(req, res);
+    
     const expires = req.registration ? req.registration.expires : null;
     const data = {
       source_address: req.source_address,
