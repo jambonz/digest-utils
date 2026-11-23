@@ -123,7 +123,8 @@ async function httpAuthenticate(logger, data, url, hook_method, secret, username
       statusCode: 200
     };
   } catch (err) {
-    logger.info(JSON.stringify(err), `Error from calling auth callback: ${err}`);
+    // JSON.stringify(err) is "{}" for an Error, and pino took it as the message and dropped the real one
+    logger.info({err, statusCode: err.statusCode}, 'Error from calling auth callback');
     let opts = { account_sid };
     if (err.code === 'StatusError' || (err.cause && err.cause.name === 'StatusError')) {
       opts = { ...opts, alert_type: AlertType.WEBHOOK_STATUS_FAILURE, url: err.hook || url, status: err.statusCode };
@@ -180,12 +181,23 @@ function calculateResponse({username, realm, method, nonce, uri, nc, cnonce, qop
 }
 
 async function clientAuthentication(logger, data, req) {
+  try {
+    return await checkClients(data, req);
+  } catch (err) {
+    // an unreadable client row must not block the webhook, which is tried next
+    logger.info({err, username: data.username}, 'Error checking clients table');
+    return {status: 'failed', statusCode: 200};
+  }
+}
+
+async function checkClients(data, req) {
   const {username, response} = data;
   const {account_sid} = req.locals;
   const {lookupClientByAccountAndUsername} = req.srf.locals.dbHelpers;
 
+  // db-helpers returns undefined (and logs) on a database error
   const clients = await lookupClientByAccountAndUsername(account_sid, username);
-  if (clients.length) {
+  if (clients && clients.length) {
     // Only take the first result.
     const client = clients[0];
 
@@ -277,7 +289,13 @@ const digestChallenge = async(req, res, next) => {
     }
 
     if (!authResult || authResult.status !== 'ok') {
-      if (registration_hook_url) {
+      // A client provisioned on the account authenticates against the clients table even when the
+      // account also has a registration webhook (e.g. Agent Studio's browser test client).
+      // Anything the table does not accept goes to the webhook, as before.
+      const clientResult = await clientAuthentication(logger, data, req);
+      if (clientResult.status === 'ok' || !registration_hook_url) {
+        authResult = clientResult;
+      } else {
         // Authenticate via HTTP server
         authResult = await httpAuthenticate(
           logger,
@@ -289,9 +307,6 @@ const digestChallenge = async(req, res, next) => {
           registration_hook_password,
           req
         );
-      } else {
-        // Check if client is available in DB.
-        authResult = await clientAuthentication(logger, data, req);
       }
     }
 
@@ -327,3 +342,5 @@ const digestChallenge = async(req, res, next) => {
 };
 
 module.exports = digestChallenge;
+// exposed so tests build challenge responses with the same (RFC-mandated MD5) digest code
+module.exports.calculateResponse = calculateResponse;
