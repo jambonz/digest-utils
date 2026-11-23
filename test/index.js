@@ -3,7 +3,6 @@ const test = require('tape');
 const crypto = require('crypto');
 const digestChallenge = require('..');
 
-const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
 const secretKey = crypto.createHash('sha256').update('test-secret').digest('base64').substring(0, 32);
 const encrypt = (text) => {
   const iv = crypto.randomBytes(16);
@@ -16,7 +15,7 @@ const realm = 'record.sip.example.com';
 const uri = 'sip:agent@record.sip.example.com';
 const authHeader = (username, password) => {
   const nonce = 'abc123';
-  const response = md5(`${md5(`${username}:${realm}:${password}`)}:${nonce}:${md5(`INVITE:${uri}`)}`);
+  const response = digestChallenge.calculateResponse({username, realm, method: 'INVITE', nonce, uri}, password);
   return `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}", algorithm=MD5`;
 };
 

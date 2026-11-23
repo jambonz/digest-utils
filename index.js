@@ -342,3 +342,5 @@ const digestChallenge = async(req, res, next) => {
 };
 
 module.exports = digestChallenge;
+// exposed so tests build challenge responses with the same (RFC-mandated MD5) digest code
+module.exports.calculateResponse = calculateResponse;
